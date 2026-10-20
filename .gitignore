@@ -1,0 +1,27 @@
+# Environnement & secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Secrets temporaires
+.pg_super_password.txt
+
+# Base de données locale
+*.db
+*.sqlite3
+
+# Médias générés
+media/*
+!media/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Système
+.DS_Store
+Thumbs.db

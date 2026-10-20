@@ -1,0 +1,54 @@
+# ============================================================
+#  KYRO AI — Render Blueprint
+#  Ce fichier est lu automatiquement par Render ("New +" → Blueprint).
+#  Il crée : 1 service web (Python) + 1 base PostgreSQL managée.
+# ============================================================
+
+services:
+  - type: web
+    name: kyro-ai
+    runtime: python
+    plan: free                 # passer à "starter" pour un disque persistant
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # Render impose son propre PORT : on ne doit PAS forcer 8000.
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health   # sert au scaling et à détecter les crashs
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: KYRO_ENVIRONMENT
+        value: production
+      # Secret de signature des jetons JWT — généré aléatoirement par Render.
+      - key: KYRO_JWT_SECRET
+        generateValue: true
+      # URL de la base PostgreSQL liée (hôte interne Render, sans SSL externe requis).
+      - key: KYRO_DATABASE_URL
+        fromDatabase:
+          name: kyro-db
+          property: connectionString
+      # Restreignez à votre domaine final dans le dashboard Render.
+      - key: KYRO_CORS_ORIGINS
+        value: "*"
+      # --- Fournisseurs IA : à ajouter manuellement dans le dashboard ---
+      # (Dashboard → kyro-ai → Environment → Add Environment Variable)
+      #   KYRO_CHAT_API_BASE, KYRO_CHAT_API_KEY, KYRO_CHAT_MODEL
+      #   KYRO_IMAGE_API_BASE, KYRO_IMAGE_API_KEY, KYRO_IMAGE_MODEL
+      #   KYRO_VIDEO_API_KEY, KYRO_VIDEO_MODEL
+      # Tant qu'ils sont absents, l'API renvoie « fournisseur non configuré » (503).
+    databases:
+      - name: kyro-db
+        plan: free
+        databaseName: kyro
+        user: kyro
+
+# ------------------------------------------------------------
+#  À SAVOIR (plan gratuit Render)
+#  1. La base PostgreSQL « free » expire après 90 jours → penser à
+#     upgrader ou exporter avant, sous peine de perdre les données.
+#  2. Le système de fichiers est ÉPHÉMÈRE : les images/vidéos
+#     générées dans ./media sont perdues à chaque redéploiement.
+#     Solutions : plan Starter + disque (persistent disk), ou stockage
+#     externe (S3 / Cloudinary / R2).
+#  3. Le service gratuit se met en veille après ~15 min d'inactivité
+#     (premier chargement lent, puis OK).
+# ------------------------------------------------------------

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KYRO AI — Intelligence artificielle complète</title>
+  <meta name="description" content="Kyro AI : chat IA, génération d'images, de vidéos et de code. Interface moderne, système de crédits.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+  <!-- ===== Barre supérieure ===== -->
+  <header class="topbar">
+    <button class="icon-btn" id="btn-menu" aria-label="Menu">☰</button>
+    <a class="logo" href="#/">KYRO<span>AI</span></a>
+
+    <nav class="topnav" id="topnav">
+      <a href="#/chat" data-nav="chat">💬 Chat</a>
+      <a href="#/images" data-nav="images">🎨 Images</a>
+      <a href="#/videos" data-nav="videos">🎬 Vidéos</a>
+      <a href="#/code" data-nav="code">💻 Code</a>
+      <a href="#/galerie" data-nav="galerie">🖼️ Galerie</a>
+      <a href="#/historique" data-nav="historique">🕒 Historique</a>
+      <a href="#/admin" data-nav="admin" class="admin-only hidden">⚙️ Admin</a>
+    </nav>
+
+    <div class="topbar-right">
+      <div class="credits-badge hidden" id="credits-badge" title="Crédits disponibles — renouvelés automatiquement chaque heure">
+        <span class="coin">◆</span>
+        <strong id="credits-value">—</strong>
+        <small id="credits-timer"></small>
+      </div>
+
+      <div class="user-area" id="user-area">
+        <a class="btn btn-primary" href="#/connexion">Connexion</a>
+        <a class="btn btn-ghost" href="#/inscription">Inscription</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Layout ===== -->
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <a href="#/chat" data-nav="chat">💬 Chat IA</a>
+        <a href="#/images" data-nav="images">🎨 Générateur d'images</a>
+        <a href="#/videos" data-nav="videos">🎬 Générateur de vidéos</a>
+        <a href="#/code" data-nav="code">💻 Générateur de code</a>
+      </div>
+      <div class="sidebar-section auth-only hidden">
+        <p class="sidebar-title">Conversations</p>
+        <div id="conv-list" class="conv-list"><em class="muted">Aucune conversation</em></div>
+      </div>
+      <div class="sidebar-section auth-only hidden">
+        <a href="#/galerie" data-nav="galerie">🖼️ Ma galerie</a>
+        <a href="#/historique" data-nav="historique">🕒 Historique</a>
+        <a href="#/profil" data-nav="profil">👤 Profil & crédits</a>
+        <a href="#/admin" data-nav="admin" class="admin-only hidden">⚙️ Administration</a>
+      </div>
+      <div class="sidebar-footer">
+        <p class="muted small">Chaque demande coûte <b>3 crédits</b>.<br>+200 crédits chaque heure, automatiquement.</p>
+      </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <main class="view" id="view"><div class="loading">Chargement…</div></main>
+  </div>
+
+  <!-- ===== Notifications ===== -->
+  <div class="toasts" id="toasts"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/views.js"></script>
+  <script src="/js/admin.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
