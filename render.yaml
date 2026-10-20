@@ -29,31 +29,20 @@ services:
         fromDatabase:
           name: kyro-db
           property: connectionString
-      # Restreignez à l'URL exacte du site après le 1er déploiement.
+      # Restreint aux requêtes venant de l'URL publique du site.
       - key: KYRO_CORS_ORIGINS
-        value: "*"
-      # --- Premier administrateur (créé au 1er démarrage, aucun admin existant) ---
-      - key: ADMIN_EMAIL
-        value: admin@kyro-ai.com
-      - key: ADMIN_USERNAME
-        value: admin
-      # ⚠️ Mot de passe ADMIN — changez-le via `sync: false` (Render demandera
-      #    une valeur au moment de la création, elle ne sera jamais dans le dépôt).
-      - key: ADMIN_PASSWORD
-        sync: false
-      # --- Fournisseurs IA (à renseigner plus tard dans le dashboard) ---
-      - key: KYRO_CHAT_API_BASE
-        sync: false
-      - key: KYRO_CHAT_API_KEY
-        sync: false
-      - key: KYRO_CHAT_MODEL
-        value: gpt-4o-mini
-      - key: KYRO_IMAGE_API_BASE
-        sync: false
-      - key: KYRO_IMAGE_API_KEY
-        sync: false
-      - key: KYRO_VIDEO_API_KEY
-        sync: false
+        value: https://kyro-ai-gkvt.onrender.com
+      # --- Fournisseurs IA : à ajouter dans le dashboard (Environment) ---
+      #   KYRO_CHAT_API_BASE, KYRO_CHAT_API_KEY, KYRO_CHAT_MODEL
+      #   KYRO_IMAGE_API_BASE, KYRO_IMAGE_API_KEY, KYRO_IMAGE_API_KEY
+      #   KYRO_VIDEO_API_KEY, KYRO_VIDEO_MODEL
+      # Tant qu'ils sont absents, l'API répond « fournisseur non configuré » (503)
+      # SANS débiter de crédits — jamais de fausse génération simulée.
+      #
+      # Le compte administrateur est créé au PREMIER démarrage seulement, à partir
+      # des variables serveur ADMIN_EMAIL / ADMIN_USERNAME / ADMIN_PASSWORD.
+      # Une fois créé, ces variables ne sont plus nécessaires (et ne sont donc pas
+      # répétées ici : aucun secret dans le dépôt ni dans le Blueprint).
 
 # Base PostgreSQL managée (déclaration de premier niveau — obligatoire)
 databases:
