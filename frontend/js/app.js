@@ -29,26 +29,39 @@ const App = {
   /* ---------- Routeur ---------- */
 
   async route() {
-    const hash = location.hash.replace(/^#\/?/, "");
-    const [path, ...rest] = hash.split("/");
-    const cleanPath = path || "";
+    const cleanPath = location.hash.replace(/^#\/?/, "");
+    const segs = cleanPath ? cleanPath.split("/") : [""];
 
-    let match = this.routes.find((r) => r.path === cleanPath || (r.path.split("/")[0] === cleanPath && r.path.includes("/:")));
-    if (!match) match = this.routes.find((r) => r.path === cleanPath);
+    // Le chemin est comparé ENTIÈREMENT segment par segment (avec extraction
+    // des paramètres :id). Comparer seulement le premier segment faisait tomber
+    // /admin/utilisateurs, /admin/credits, /admin/parametres et /admin/journaux
+    // sur le tableau de bord — les onglets de l'admin étaient donc morts.
+    let route = null;
+    const params = {};
+    for (const r of this.routes) {
+      const rs = r.path.split("/");
+      if (rs.length !== segs.length) continue;
+      const found = {};
+      const ok = rs.every((seg, i) => {
+        if (seg.startsWith(":")) { found[seg.slice(1)] = segs[i]; return true; }
+        return seg === segs[i];
+      });
+      if (ok) { route = r; Object.assign(params, found); break; }
+    }
 
     const view = document.getElementById("view");
 
-    if (match && match.auth && !API.token) {
+    if (route && route.auth && !API.token) {
       toast("Connectez-vous pour accéder à cette page.", "warning");
       location.hash = "#/connexion";
       return;
     }
-    if (match && match.admin && !API.isAdmin) {
+    if (route && route.admin && !API.isAdmin) {
       if (!API.token) { location.hash = "#/connexion"; return; }
       view.innerHTML = `<div class="empty-state"><div class="icon">🔒</div><p>Accès réservé aux administrateurs.</p></div>`;
       return;
     }
-    if (match && match.guestOnly && API.token) {
+    if (route && route.guestOnly && API.token) {
       location.hash = "#/chat";
       return;
     }
@@ -59,10 +72,7 @@ const App = {
 
     view.innerHTML = `<div class="loading">Chargement…</div>`;
     try {
-      const params = {};
-      const segs = (match ? match.path : "").split("/");
-      segs.forEach((seg, i) => { if (seg.startsWith(":")) params[seg.slice(1)] = rest[i]; });
-      await (match || this.routes[0]).view.render(view, params);
+      await (route || this.routes[0]).view.render(view, params);
     } catch (e) {
       view.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${esc(e.message || "Erreur de rendu.")}</p></div>`;
     }
