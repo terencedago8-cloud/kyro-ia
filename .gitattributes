@@ -1,0 +1,12 @@
+# Normalise les fins de ligne : le dépôt stocke du LF, ce qui évite les
+# écarts Windows/Linux au clone (Render déploie sous Linux).
+* text=auto
+
+# Fichiers binaires
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

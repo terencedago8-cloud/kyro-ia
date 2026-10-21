@@ -95,8 +95,16 @@ check("GET /api/admin/settings (clés masquées)", r.status_code == 200 and "KYR
 check("Aucune clé API exposée", "api_key" not in str(r.json()).lower() or "sk-" not in str(r.json()))
 r = c.put("/api/admin/settings", headers=AH, json={"settings": {"cost.chat": 7}})
 check("Modification du coût chat → 7", r.status_code == 200 and r.json()["updated"]["cost.chat"] == 7)
+bal_before = c.get("/api/me", headers=UH).json()["credits"]["balance"]
 r = c.post("/api/chat", headers=UH, json={"message": "test coût"})
-check("Le nouveau coût s'applique (échoue faute de fournisseur mais coût checké avant)", r.status_code == 503)
+bal_after = c.get("/api/me", headers=UH).json()["credits"]["balance"]
+if c.get("/api/providers").json()["chat"]["configured"]:
+    check("Nouveau coût chat = 7 crédits (ou remboursement intégral si le fournisseur échoue)",
+          (r.status_code == 200 and bal_after == bal_before - 7)
+          or (r.status_code != 200 and bal_after == bal_before),
+          f"({r.status_code}, {bal_before}→{bal_after})")
+else:
+    check("Coût vérifié avant fournisseur → 503", r.status_code == 503, f"({r.status_code})")
 c.post(f"/api/admin/users/{user_id}/credits", headers=AH, json={"action": "set", "amount": 5, "reason": "reset pour test 402"})
 r = c.post("/api/chat", headers=UH, json={"message": "test"})
 check("Solde 5 < coût 7 → 402 crédits insuffisants", r.status_code == 402, f"({r.status_code}: {r.text[:120]})")

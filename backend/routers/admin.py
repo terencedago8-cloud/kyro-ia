@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from .. import credits as credit_service
 from .. import schemas
-from ..config import settings as app_settings
 from ..database import get_db
 from ..deps import require_admin
+from ..services import ai
 from ..models import (
     AdminLog,
     AuditLog,
@@ -215,25 +215,11 @@ def grant_all(payload: schemas.AdminGrantAllIn, db: Session = Depends(get_db), a
 
 # ---------- Paramètres ----------
 
-PROVIDER_ENV_KEYS = {
-    "chat": ["KYRO_CHAT_API_BASE", "KYRO_CHAT_MODEL"],
-    "image": ["KYRO_IMAGE_API_BASE", "KYRO_IMAGE_MODEL"],
-    "video": ["KYRO_VIDEO_API_BASE", "KYRO_VIDEO_MODEL"],
-}
-
 
 @router.get("/settings")
 def get_settings_view(db: Session = Depends(get_db)):
     """Réglages applicatifs + état des fournisseurs IA (clés JAMAIS exposées)."""
-    providers = {
-        "chat": {"configured": bool(app_settings.chat_api_base and app_settings.chat_api_key),
-                 "model": app_settings.chat_model, "env": PROVIDER_ENV_KEYS["chat"]},
-        "image": {"configured": bool(app_settings.image_api_base and app_settings.image_api_key),
-                  "model": app_settings.image_model, "env": PROVIDER_ENV_KEYS["image"]},
-        "video": {"configured": bool(app_settings.video_api_key and app_settings.video_model),
-                  "model": app_settings.video_model, "env": PROVIDER_ENV_KEYS["video"]},
-    }
-    return {"settings": credit_service.get_all_settings(db), "providers": providers}
+    return {"settings": credit_service.get_all_settings(db), "providers": ai.available()}
 
 
 @router.put("/settings")

@@ -46,10 +46,29 @@ class Settings(BaseSettings):
     image_api_key: str | None = None
     image_model: str = "gpt-image-1"
 
-    # --- Fournisseur VIDEOS (Replicate) ---
+    # --- Fournisseur VIDEOS (Replicate `r8_…` ou Pollinations `sk_…`) ---
     video_api_base: str = "https://api.replicate.com/v1"
     video_api_key: str | None = None
     video_model: str | None = None
+
+    # --- Repli GRATUIT sans clé : Pollinations (texte + images) ---
+    # Activé par défaut : le site génère réellement sans aucune clé API.
+    # Le service gratuit limite le débit (~1 texte/30 s et ~1 image/45 s par IP) :
+    # en cas de dépassement l'API renvoie un message explicatif + remboursement.
+    # Désactiver avec KYRO_FREE_AI=false → 503 tant qu'aucune clé n'est fournie.
+    free_ai: bool = True
+    free_chat_endpoint: str = "https://text.pollinations.ai/openai"
+    free_chat_model: str = "openai-fast"
+    free_image_endpoint: str = "https://image.pollinations.ai/prompt"
+
+    # --- Pollinations avec clé : UNE SEULE clé pour chat + images + vidéos ---
+    # Clé gratuite obtenue sur https://enter.pollinations.ai/keys (pollen par quêtes),
+    # à poser dans KYRO_POLLINATIONS_KEY. Leve les limites de débit et debloque la vidéo.
+    pollinations_key: str | None = None
+    pollinations_api_base: str = "https://gen.pollinations.ai"
+    pollinations_chat_model: str = "openai/gpt-4o-mini"
+    pollinations_image_model: str | None = None
+    pollinations_video_model: str = "google/veo-3.1-fast"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,6 +1,12 @@
-"""Test du moteur de crédits : idempotence, concurrence, remboursement (PostgreSQL requis pour FOR UPDATE)."""
+"""Test du moteur de crédits : idempotence, concurrence, remboursement (PostgreSQL requis pour FOR UPDATE).
+
+La base étant persistante, chaque exécution utilise des comptes ET des `request_id`
+uniques : la colonne `credit_ledger.request_id` est UNIQUE (c'est ce qui garantit
+l'idempotence des déductions en production).
+"""
 import sys
 import threading
+import time
 from datetime import timedelta
 
 sys.path.insert(0, ".")
@@ -24,9 +30,22 @@ def check(name, cond, extra=""):
         print(f"  [ÉCHEC] {name} {extra}")
 
 
+RUN_TAG = int(time.time())  # comptes de test uniques à chaque exécution
+
+
+def rid(tag: str) -> str:
+    """request_id unique par exécution (contrainte UNIQUE en base)."""
+    return f"{tag}-{RUN_TAG}"
+
+
 def fresh_user(tag, balance=100):
     db = SessionLocal()
-    u = User(email=f"{tag}@engine.test", username=f"eng_{tag}", password_hash=hash_password("x" * 10), role="USER")
+    u = User(
+        email=f"{tag}{RUN_TAG}@engine.test",
+        username=f"eng_{tag}{RUN_TAG % 100000}",
+        password_hash=hash_password("x" * 10),
+        role="USER",
+    )
     db.add(u)
     db.flush()
     db.add(UserCredit(user_id=u.id, balance=balance, period_start=utcnow()))
@@ -46,9 +65,10 @@ def balance_of(uid):
 print("== 1. Idempotence : une seule déduction par request_id ==")
 uid = fresh_user("idem")
 db = SessionLocal()
-credit_service.consume_credits(db, uid, 3, "CHAT", "req-unique-1", "test")
-credit_service.consume_credits(db, uid, 3, "CHAT", "req-unique-1", "test")  # tentative de double
-credit_service.consume_credits(db, uid, 3, "CHAT", "req-unique-1", "test")  # encore
+rid_unique = rid("req-unique")
+credit_service.consume_credits(db, uid, 3, "CHAT", rid_unique, "test")
+credit_service.consume_credits(db, uid, 3, "CHAT", rid_unique, "test")  # tentative de double
+credit_service.consume_credits(db, uid, 3, "CHAT", rid_unique, "test")  # encore
 db.close()
 check("3 appels avec le même request_id → 1 seule déduction (100→97)", balance_of(uid) == 97, f"({balance_of(uid)})")
 
@@ -56,7 +76,7 @@ print("== 2. Solde insuffisant → exception + aucun débit ==")
 uid = fresh_user("insuf", balance=2)
 db = SessionLocal()
 try:
-    credit_service.consume_credits(db, uid, 3, "IMAGE", "req-insuf", "test")
+    credit_service.consume_credits(db, uid, 3, "IMAGE", rid("req-insuf"), "test")
     check("InsufficientCredits levée", False)
 except credit_service.InsufficientCredits:
     check("InsufficientCredits levée", True)
@@ -66,9 +86,10 @@ check("Aucun débit si refus (solde inchangé)", balance_of(uid) == 2)
 print("== 3. Remboursement idempotent ==")
 uid = fresh_user("refund")
 db = SessionLocal()
-credit_service.consume_credits(db, uid, 3, "VIDEO", "req-refund", "test")
-credit_service.refund_credits(db, uid, 3, "req-refund")  # 1er remboursement
-credit_service.refund_credits(db, uid, 3, "req-refund")  # double remboursement bloqué
+rid_refund = rid("req-refund")
+credit_service.consume_credits(db, uid, 3, "VIDEO", rid_refund, "test")
+credit_service.refund_credits(db, uid, 3, rid_refund)  # 1er remboursement
+credit_service.refund_credits(db, uid, 3, rid_refund)  # double remboursement bloqué
 db.close()
 check("Consume + 2 refunds → solde d'origine (pas de double)", balance_of(uid) == 100, f"({balance_of(uid)})")
 
@@ -84,13 +105,14 @@ check("5 h de déconnexion → solde = 200 (et non 5×200)", balance_of(uid) == 
 
 print("== 5. Concurrence : 10 déductions simultanées, même request_id ==")
 uid = fresh_user("conc", balance=1000)
+rid_conc = rid("req-conc")
 errors = []
 
 
 def worker():
     try:
         db = SessionLocal()
-        credit_service.consume_credits(db, uid, 3, "CHAT", "req-conc", "conc")
+        credit_service.consume_credits(db, uid, 3, "CHAT", rid_conc, "conc")
         db.close()
     except Exception as e:  # noqa: BLE001
         errors.append(e)
@@ -109,7 +131,7 @@ errors = []
 def worker2(i):
     try:
         db = SessionLocal()
-        credit_service.consume_credits(db, uid, 3, "IMAGE", f"req-distinct-{i}", "conc")
+        credit_service.consume_credits(db, uid, 3, "IMAGE", f"req-distinct-{RUN_TAG}-{i}", "conc")
         db.close()
     except credit_service.InsufficientCredits:
         pass

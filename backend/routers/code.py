@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from .. import credits as credit_service, schemas
 from ..services import ai
-from ..config import settings
 from ..database import get_db
 from ..deps import CreditsRequired, check_prompt_length
 from ..models import Generation, utcnow
@@ -32,7 +31,7 @@ async def generate_code(
 
     gen = Generation(
         id=generation_id, user_id=user.id, kind="CODE", status="RUNNING",
-        prompt=payload.prompt, credits_cost=cost, provider=f"openai-compatible:{settings.chat_model}",
+        prompt=payload.prompt, credits_cost=cost, provider=ai.chat_provider_label(),
     )
     db.add(gen)
     db.commit()
@@ -56,7 +55,7 @@ async def generate_code(
         gen.status, gen.error, gen.completed_at = "FAILED", str(e), utcnow()
         db.commit()
         credit_service.refund_credits(db, user.id, cost, generation_id)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Le fournisseur IA a échoué : {e}. Crédits remboursés.")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"{str(e).rstrip('.')} Crédits remboursés.")
 
     gen.text = result
     gen.status = "SUCCESS"

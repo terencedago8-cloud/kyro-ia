@@ -74,15 +74,38 @@ CREATE DATABASE kyro OWNER kyro;
 cp .env.example .env
 ```
 
-Éditez `.env` : renseignez `KYRO_JWT_SECRET` (chaîne aléatoire longue) et vos clés API.
+Éditez `.env` : renseignez `KYRO_JWT_SECRET` (chaîne aléatoire longue).
+**Aucune clé API n'est nécessaire pour démarrer** : le repli gratuit est actif par défaut.
 
 | Variable | Rôle |
 |---|---|
 | `KYRO_DATABASE_URL` | Chaîne de connexion PostgreSQL |
 | `KYRO_JWT_SECRET` | Secret de signature des jetons (obligatoire, long et aléatoire) |
-| `KYRO_CHAT_API_BASE` / `KYRO_CHAT_API_KEY` / `KYRO_CHAT_MODEL` | Chat & code (compatible OpenAI) |
-| `KYRO_IMAGE_API_BASE` / `KYRO_IMAGE_API_KEY` / `KYRO_IMAGE_MODEL` | Images |
-| `KYRO_VIDEO_API_KEY` / `KYRO_VIDEO_MODEL` | Vidéos (Replicate, ex. `minimax/video-01`) |
+| `KYRO_FREE_AI` | `true` (défaut) : chat, code et images fonctionnent **sans aucune clé** (repli gratuit). `false` : 503 tant qu'aucune clé n'est fournie |
+| `KYRO_POLLINATIONS_KEY` | **Une seule clé gratuite** pour tout (chat + code + images + **vidéos**) et sans limite de débit — sur https://enter.pollinations.ai/keys |
+| `KYRO_CHAT_API_BASE` / `KYRO_CHAT_API_KEY` / `KYRO_CHAT_MODEL` | Chat & code (compatible OpenAI : OpenAI, Groq, Mistral, Ollama…) — prioritaire sur le repli |
+| `KYRO_IMAGE_API_BASE` / `KYRO_IMAGE_API_KEY` / `KYRO_IMAGE_MODEL` | Images (API Images OpenAI) — prioritaire sur le repli |
+| `KYRO_VIDEO_API_KEY` / `KYRO_VIDEO_MODEL` | **Vidéos : clé obligatoire** — Replicate (`r8_…` + `KYRO_VIDEO_MODEL`) ou Pollinations (`sk_…`, modèle par défaut) |
+
+#### Comment le serveur choisit-il le fournisseur ?
+
+Pour chaque fonction, il parcourt les options **dans cet ordre** et s'arrête au premier
+fournisseur disponible :
+
+| Fonction | 1. Votre clé | 2. Clé Pollinations | 3. Repli gratuit sans clé |
+|---|---|---|---|
+| Chat & code | `KYRO_CHAT_API_BASE` + `KEY` | `KYRO_POLLINATIONS_KEY` | `text.pollinations.ai` |
+| Images | `KYRO_IMAGE_API_BASE` + `KEY` | `KYRO_POLLINATIONS_KEY` | `image.pollinations.ai` |
+| Vidéos | `KYRO_VIDEO_API_KEY` (`r8_…`) | `KYRO_VIDEO_API_KEY` (`sk_…`) ou `KYRO_POLLINATIONS_KEY` | — aucun service gratuit n'existe |
+
+L'état réel est consultable sans authentification sur **`GET /api/providers`** (aucune clé
+n'y figure) et dans le panneau admin (`#/admin` → Paramètres).
+
+> ⚠️ **Le repli gratuit limite le débit** : ~1 texte/30 s et ~1 image/45 s **par IP serveur**,
+> donc partagé entre tous les visiteurs du site. Parfait pour découvrir et tester ; pour un
+> usage réel, prenez une clé Pollinations gratuite ou votre propre clé. En cas de dépassement
+> du quota : message explicite en français + **remboursement automatique des crédits**
+> (aucune fausse génération n'est jamais renvoyée).
 
 > 🔐 **Les clés API ne quittent jamais le serveur** — elles ne sont ni dans le navigateur ni dans le code public. Si un fournisseur n'est pas configuré, l'API renvoie un message explicatif (503) au lieu de simuler une génération.
 
@@ -145,6 +168,7 @@ python -m scripts.init_admin
 | POST | `/api/auth/register` · `/api/auth/login` | Inscription / connexion |
 | POST | `/api/chat` | Message au chat IA |
 | POST | `/api/images` · `/api/videos` · `/api/code` | Générations |
+| GET | `/api/providers` | Fournisseurs IA réellement disponibles (sans clé, sans auth) |
 | GET | `/api/generations/{id}` | Suivi d'une tâche longue (polling) |
 | GET | `/api/gallery` · `/api/conversations` | Galerie / historique |
 | GET/PATCH | `/api/me` · `/api/me/credits/history` | Profil, solde, journal de crédits |
@@ -202,9 +226,21 @@ Au **premier démarrage**, le serveur crée cet admin s'il n'en existe aucun —
 le recrée jamais (non bloquant si les variables sont absentes). Côté serveur uniquement,
 jamais par requête HTTP.
 
-### 4. Configurer les fournisseurs IA (optionnel)
+### 4. Fournisseurs IA (optionnel — le site fonctionne déjà sans clé)
 
-**Environment** → **Add Environment Variable** pour chacun :
+Le repli gratuit (`KYRO_FREE_AI=true`, valeur par défaut) rend **chat, code et images
+réellement fonctionnels dès le premier déploiement**, sans aucune clé : l'IA générée est
+réelle (Pollinations), jamais simulée. Seule la **vidéo** reste désactivée, faute de
+service vidéo gratuit — l'API renvoie alors un message expliquant quoi configurer.
+
+Pour lever les limites de débit **et activer la vidéo**, une seule clé gratuite suffit
+(https://enter.pollinations.ai/keys — pollen obtenu par des quêtes) :
+
+```
+KYRO_POLLINATIONS_KEY   sk_...
+```
+
+Ou bien votre propre fournisseur, qui prend alors la priorité :
 
 ```
 KYRO_CHAT_API_BASE   https://api.openai.com/v1
@@ -212,11 +248,13 @@ KYRO_CHAT_API_KEY    sk-...
 KYRO_CHAT_MODEL      gpt-4o-mini
 KYRO_IMAGE_API_BASE  https://api.openai.com/v1
 KYRO_IMAGE_API_KEY   sk-...
-KYRO_VIDEO_API_KEY   r8_...
-KYRO_VIDEO_MODEL     ...
+KYRO_VIDEO_API_KEY   r8_...              # Replicate (payant)
+KYRO_VIDEO_MODEL     minimax/video-01
 ```
 
-Tant qu'ils sont absents, l'API répond « fournisseur non configuré » (503) **sans débiter**.
+Ajoutez-les dans **Environment** → **Add Environment Variable**, puis
+**Manual Deploy → Clear build cache & deploy**. Le résultat se vérifie sur
+`https://votre-site/api/providers`.
 
 ### 5. Après le premier déploiement
 
@@ -261,12 +299,29 @@ Le moteur de tâches utilise `asyncio` (adapté à une instance unique). Pour pl
 
 ## ✅ Vérification rapide
 
-1. Inscrivez-vous sur `#/inscription` → **200 crédits** creditedés immédiatement.
-2. Envoyez un message au chat → solde passe à **197**, `⏳` décompte dans la barre.
-3. Déconnectez-vous ~1 h → reconnectez-vous : le solde est de nouveau à **200** (non cumulatif).
-4. Coupez `KYRO_CHAT_API_KEY` → le chat affiche le message « fournisseur non configuré » et **rembourse** les crédits.
-5. Connectez-vous avec l'ADMIN → `#/admin` : statistiques, utilisateurs, crédits, paramètres, journaux.
-6. Testez le blocage : retirez des crédits à un compte (admin) → la demande est refusée avec un message explicatif.
+1. Inscrivez-vous sur `#/inscription` → **200 crédits** crédités immédiatement.
+2. Envoyez un message au chat → **vraie réponse d'IA**, le solde passe à **197**, `⏳` décompte dans la barre.
+3. Générez une image → elle arrive dans la Galerie en quelques secondes (JPEG réel, jamais d'image de repli simulée).
+4. Déconnectez-vous ~1 h → reconnectez-vous : le solde est de nouveau à **200** (non cumulatif).
+5. Saturez le quota gratuit (ou désactivez le repli avec `KYRO_FREE_AI=false`) → message explicatif + **remboursement intégral**.
+6. Connectez-vous avec l'ADMIN → `#/admin` : statistiques, utilisateurs, crédits, paramètres (dont l'état des fournisseurs), journaux.
+7. Testez le blocage : retirez des crédits à un compte (admin) → la demande est refusée avec un message explicatif.
+
+### 🧪 Tests — 77 vérifications sur PostgreSQL
+
+Avec le serveur local lancé sur `http://127.0.0.1:8000` :
+
+```bash
+python tests/test_e2e.py            # parcours complet + sécurité            (17)
+python tests/test_admin.py          # administration & garde-fous            (30)
+python tests/test_providers.py      # VRAIES générations IA + remboursements (18)
+python tests/test_credits_engine.py # idempotence & concurrence              (7)
+python tests/test_bootstrap.py      # création du premier admin              (5)
+```
+
+`test_providers.py` appelle les vrais fournisseurs : il vérifie qu'une réponse d'IA réelle
+est produite, que la déduction vaut **exactement 3 crédits**, qu'un échec est **toujours
+remboursé**, et qu'une fonction sans fournisseur renvoie un 503 explicite.
 
 ---
 

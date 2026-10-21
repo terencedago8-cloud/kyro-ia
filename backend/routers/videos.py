@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from .. import credits as credit_service, schemas
 from ..services import ai, tasks
-from ..config import settings
 from ..database import get_db
 from ..deps import CreditsRequired, check_prompt_length
 from ..models import Generation
@@ -32,7 +31,7 @@ async def generate_video(
 
     gen = Generation(
         id=generation_id, user_id=user.id, kind="VIDEO", status="PENDING",
-        prompt=payload.prompt, credits_cost=cost, provider=f"replicate:{settings.video_model}",
+        prompt=payload.prompt, credits_cost=cost, provider=ai.video_provider_label(),
     )
     db.add(gen)
     db.commit()

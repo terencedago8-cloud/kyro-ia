@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from .. import credits as credit_service, schemas
 from ..services import ai
-from ..config import settings
 from ..database import get_db
 from ..deps import CreditsRequired, check_prompt_length
 from ..models import Conversation, Generation, Message, utcnow
@@ -42,7 +41,7 @@ async def chat(
 
     gen = Generation(
         id=generation_id, user_id=user.id, kind="CHAT", status="RUNNING",
-        prompt=payload.message, credits_cost=cost, provider=f"openai-compatible:{settings.chat_model}",
+        prompt=payload.message, credits_cost=cost, provider=ai.chat_provider_label(),
     )
     db.add(gen)
     db.add(Message(conversation_id=conv.id, role="user", content=payload.message))
@@ -72,7 +71,7 @@ async def chat(
     except ai.ProviderError as e:
         _fail(db, gen)
         credit_service.refund_credits(db, user.id, cost, generation_id)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Le fournisseur IA a échoué : {e}. Crédits remboursés.")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"{str(e).rstrip('.')} Crédits remboursés.")
 
     gen.text = reply
     gen.status = "SUCCESS"

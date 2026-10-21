@@ -18,6 +18,7 @@ from .bootstrap import bootstrap_admin
 from .config import settings
 from .database import Base, SessionLocal, engine
 from .routers import admin, auth, chat, code, generations, images, profile, videos
+from .services import ai
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("kyro")
@@ -102,6 +103,16 @@ app.include_router(admin.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok", "app": "KYRO AI"}
+
+
+@app.get("/api/providers")
+def providers():
+    """Fonctions IA réellement disponibles côté serveur (aucune clé secrète exposée).
+
+    Sert le frontend à afficher honnêtement ce qui est utilisable : une fonction
+    indisponible renvoie 503 avec un message explicatif, jamais une fausse génération.
+    """
+    return ai.available()
 
 
 # --- Médias générés (images / vidéos) + frontend (dernier : ne pas écraser /api) ---

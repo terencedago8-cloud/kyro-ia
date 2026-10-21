@@ -32,12 +32,21 @@ services:
       # Restreint aux requêtes venant de l'URL publique du site.
       - key: KYRO_CORS_ORIGINS
         value: https://kyro-ai-gkvt.onrender.com
-      # --- Fournisseurs IA : à ajouter dans le dashboard (Environment) ---
-      #   KYRO_CHAT_API_BASE, KYRO_CHAT_API_KEY, KYRO_CHAT_MODEL
-      #   KYRO_IMAGE_API_BASE, KYRO_IMAGE_API_KEY, KYRO_IMAGE_API_KEY
-      #   KYRO_VIDEO_API_KEY, KYRO_VIDEO_MODEL
-      # Tant qu'ils sont absents, l'API répond « fournisseur non configuré » (503)
-      # SANS débiter de crédits — jamais de fausse génération simulée.
+      # --- Fournisseurs IA ---
+      # Par défaut, chat / code / images fonctionnent SANS AUCUNE CLÉ grâce au
+      # repli gratuit Pollinations (IA réelle générée, jamais simulée).
+      # Débit limité : ~1 texte/30 s et ~1 image/45 s PAR IP serveur (donc partagé
+      # entre les visiteurs). La vidéo n'a aucun service gratuit : elle exige une clé.
+      - key: KYRO_FREE_AI
+        value: "true"
+      # Pour lever les limites de débit ET activer la vidéo, une seule clé gratuite
+      # suffit (https://enter.pollinations.ai/keys) — Environment du dashboard :
+      #   KYRO_POLLINATIONS_KEY=sk_...
+      # Ou votre propre fournisseur, qui prend la priorité :
+      #   KYRO_CHAT_API_BASE / KYRO_CHAT_API_KEY / KYRO_CHAT_MODEL
+      #   KYRO_IMAGE_API_BASE / KYRO_IMAGE_API_KEY / KYRO_IMAGE_MODEL
+      #   KYRO_VIDEO_API_KEY (Replicate « r8_… ») / KYRO_VIDEO_MODEL
+      # Sans clé vidéo, l'API répond 503 avec un message explicatif, SANS débiter.
       #
       # Le compte administrateur est créé au PREMIER démarrage seulement, à partir
       # des variables serveur ADMIN_EMAIL / ADMIN_USERNAME / ADMIN_PASSWORD.

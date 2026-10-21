@@ -45,11 +45,11 @@ async def run_generation(generation_id: str) -> None:
             if gen.kind == "IMAGE":
                 content, ext = await ai.generate_image(gen.prompt)
                 gen.media_url = save_media(content, ext, "image")
-                gen.provider = f"openai-images:{settings.image_model}"
+                gen.provider = ai.image_provider_label()
             elif gen.kind == "VIDEO":
                 content, ext = await ai.generate_video(gen.prompt)
                 gen.media_url = save_media(content, ext, "video")
-                gen.provider = f"replicate:{settings.video_model}"
+                gen.provider = ai.video_provider_label()
             else:
                 raise ai.ProviderError(f"Type de génération non pris en charge : {gen.kind}")
 

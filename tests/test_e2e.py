@@ -37,7 +37,7 @@ H = {"Authorization": f"Bearer {token}"}
 check("Solde initial = 200 crédits", c.get("/api/me", headers=H).json()["credits"]["balance"] == 200)
 
 print("== 4. Sécurité inscription (rôle ADMIN impossible) ==")
-r2 = c.post("/api/auth/register", json={"email": "admin_fake@kyro.ai", "username": "fakeadmin", "password": "Motdepasse123", "role": "ADMIN"})
+r2 = c.post("/api/auth/register", json={"email": f"admin_fake_{int(time.time())}@kyro.ai", "username": f"fake{int(time.time()) % 100000}", "password": "Motdepasse123", "role": "ADMIN"})
 check(" champ 'role' ignoré (reste USER)", r2.json()["user"]["role"] == "USER")
 
 print("== 5. Connexion & mauvais mot de passe ==")
@@ -46,16 +46,29 @@ check("Mauvais mot de passe → 401", r.status_code == 401)
 r = c.post("/api/auth/login", json={"email": email, "password": "Motdepasse123"})
 check("Bonne connexion → 200 + jeton", r.status_code == 200 and "access_token" in r.json())
 
-print("== 6. Chat sans fournisseur configuré → 503 + remboursement ==")
+print("== 6. Chat IA : génération réelle OU 503/expéremboursé ==")
+prov = c.get("/api/providers").json()
 before = c.get("/api/me", headers=H).json()["credits"]["balance"]
 r = c.post("/api/chat", headers=H, json={"message": "Bonjour Kyro !"})
-check("503 message explicatif (pas de fausse génération)", r.status_code == 503 and "fournisseur" in r.json()["detail"].lower(), f"({r.status_code}: {r.text[:200]})")
 after = c.get("/api/me", headers=H).json()["credits"]["balance"]
-check("Crédits remboursés (solde inchangé)", before == after, f"(avant={before} après={after})")
+if prov["chat"]["configured"]:
+    if r.status_code == 200:
+        check("Chat réel → 200, réponse non vide, déduction EXACTE de 3 crédits",
+              after == before - 3 and len(r.json().get("reply", "").strip()) > 0,
+              f"(avant={before} après={after})")
+    else:
+        check(f"Échec fournisseur ({r.status_code}) → remboursement intégral",
+              after == before, f"(avant={before} après={after}: {r.text[:150]})")
+else:
+    check("503 message explicatif (pas de fausse génération)", r.status_code == 503 and "fournisseur" in r.json()["detail"].lower(), f"({r.status_code}: {r.text[:200]})")
+    check("Crédits remboursés (solde inchangé)", before == after, f"(avant={before} après={after})")
 
-print("== 7. Images sans fournisseur → 503 ==")
+print("== 7. Images : fournisseur réel → 202, sinon 503 ==")
 r = c.post("/api/images", headers=H, json={"prompt": "un chat dans l'espace"})
-check("503 image non configurée", r.status_code == 503, f"({r.status_code})")
+if prov["image"]["configured"]:
+    check("POST /api/images → 202 (vraie tâche de génération lancée)", r.status_code == 202, f"({r.status_code}: {r.text[:200]})")
+else:
+    check("503 image non configurée", r.status_code == 503, f"({r.status_code})")
 
 print("== 8. Blocage solde insuffisant (402) ==")
 r = c.get("/api/admin/stats", headers=H)
