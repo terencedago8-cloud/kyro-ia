@@ -13,8 +13,11 @@ Choix automatique du fournisseur, pour chaque fonction (du plus prioritaire au m
       3. Repli GRATUIT sans clé  image.pollinations.ai (KYRO_FREE_AI=true, activé par défaut)
 
     Vidéos — aucun repli gratuit n'existe : une clé est indispensable
-      1. Clé Replicate    r8_…  → KYRO_VIDEO_API_KEY (+ KYRO_VIDEO_MODEL)
-      2. Clé Pollinations sk_…  → KYRO_VIDEO_API_KEY ou KYRO_POLLINATIONS_KEY
+      1. Clé Pollinations sk_… → KYRO_POLLINATIONS_KEY (gratuite : pollen des quêtes)
+      2. Clé Replicate    r8_…  → KYRO_VIDEO_API_KEY (+ KYRO_VIDEO_MODEL)
+      La vidéo demande une tâche asynchrone (202 → /v1/jobs) : la connexion n'est
+      jamais maintenue ouverte pendant la génération, ce qui protège des coupures
+      de proxy ; repli synchrone si le serveur ne propose pas ce mode.
 
 Garanties du cahier des charges :
   • aucun fournisseur disponible → ProviderNotConfigured → 503 en français, AVANT toute
@@ -116,9 +119,10 @@ def _image_not_configured() -> ProviderNotConfigured:
 def _video_not_configured() -> ProviderNotConfigured:
     return ProviderNotConfigured(
         "Aucun fournisseur de vidéos IA n'est configuré : la vidéo n'a pas de service "
-        "gratuit sans clé. L'administrateur doit renseigner KYRO_VIDEO_API_KEY "
-        "(clé Replicate « r8_… » avec KYRO_VIDEO_MODEL, ou clé Pollinations « sk_… ») "
-        "puis redéployer. Aucun crédit n'a été débité."
+        "gratuit sans clé. L'administrateur doit renseigner KYRO_POLLINATIONS_KEY "
+        "(clé gratuite « sk_… » obtenue sur https://enter.pollinations.ai/keys, "
+        "le pollen des quêtes est offert) ou KYRO_VIDEO_API_KEY (clé Replicate « r8_… » "
+        "avec KYRO_VIDEO_MODEL), puis redéployer. Aucun crédit n'a été débité."
     )
 
 
@@ -212,8 +216,9 @@ def available() -> dict:
             "model": video_target[2] if video_target else settings.video_model,
             "free": False,
             "note": None if video_configured() else (
-                "La vidéo exige une clé : ajoutez KYRO_VIDEO_API_KEY "
-                "(clé Replicate avec KYRO_VIDEO_MODEL, ou clé Pollinations — voir le README)."
+                "La vidéo exige une clé (aucun service gratuit anonyme n'existe) : créez une "
+                "clé gratuite sur https://enter.pollinations.ai/keys puis ajoutez "
+                "KYRO_POLLINATIONS_KEY — ou une clé Replicate avec KYRO_VIDEO_API_KEY."
             ),
             "env": ["KYRO_VIDEO_API_KEY", "KYRO_VIDEO_MODEL", "KYRO_POLLINATIONS_KEY"],
         },
@@ -446,25 +451,108 @@ async def _video_replicate(
     raise ProviderError("La génération de vidéo a expiré (délai maximum dépassé).")
 
 
-async def _video_pollinations(prompt: str, key: str, model: str, timeout_seconds: int) -> tuple[bytes, str]:
-    """Pollinations : un GET synchrone renvoie le fichier MP4 généré."""
-    url = f"{settings.pollinations_api_base.rstrip('/')}/video/{quote(prompt, safe='')}"
-    params = {"model": model} if model else {}
-
-    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
-        try:
-            r = await client.get(url, params=params, headers={"Authorization": f"Bearer {key}"})
-        except httpx.HTTPError as e:
-            raise ProviderError(f"Impossible de joindre le fournisseur de vidéos : {e}") from e
-
-    if r.status_code != 200:
-        raise _failure(r, "de vidéos")
+def _video_bytes(r: httpx.Response) -> tuple[bytes, str]:
+    """Valide qu'une réponse est bien une vidéo (MP4) et la retourne."""
     content_type = r.headers.get("content-type", "")
     if content_type.lower().startswith("video/") or _looks_like_mp4(r.content):
         return r.content, "mp4"
     if "json" in content_type:
         raise ProviderError(f"Le fournisseur de vidéos a répondu : {' '.join(r.text[:300].split())}")
     raise ProviderError("Le fournisseur de vidéos a renvoyé un contenu inattendu.")
+
+
+async def _wait_video_job(
+    client: httpx.AsyncClient,
+    response: httpx.Response,
+    auth: dict,
+    fallback_url: str,
+    fallback_params: dict,
+    timeout_seconds: int,
+) -> tuple[bytes, str]:
+    """Suit une tâche asynchrone Pollinations (202) jusqu'au fichier MP4.
+
+    `Prefer: respond-async` évite de maintenir une connexion HTTP ouverte pendant
+    toute la génération : un proxy/CDN coupe généralement au-delà de ~100 s, ce qui
+    ferait échouer les modèles vidéo les plus lents. Le suivi n'est jamais facturé.
+    """
+    base = settings.pollinations_api_base.rstrip("/")
+    job_id = None
+    try:
+        job_id = (response.json() or {}).get("id")
+    except ValueError:
+        pass
+    if not job_id:
+        location = (response.headers.get("location") or "").rstrip("/")
+        job_id = location.rsplit("/", 1)[-1] or None
+    if not job_id:
+        # Pas d'identifiant exploitable : voie synchrone classique.
+        r = await client.get(fallback_url, params=fallback_params, headers=auth)
+        if r.status_code != 200:
+            raise _failure(r, "de vidéos")
+        return _video_bytes(r)
+
+    poll_seconds = 5
+    waited = 0
+    while waited <= timeout_seconds:
+        jr = await client.get(f"{base}/v1/jobs/{job_id}", headers=auth)
+        if jr.status_code == 404:
+            # Tâche inconnue ou expirée : la génération synchrone donne le même
+            # résultat (une requête identique rejoint la même génération, une seule fois facturée).
+            r = await client.get(fallback_url, params=fallback_params, headers=auth)
+            if r.status_code != 200:
+                raise _failure(r, "de vidéos")
+            return _video_bytes(r)
+        if jr.status_code != 200:
+            raise _failure(jr, "de vidéos")
+        try:
+            job = jr.json() or {}
+        except ValueError as e:
+            raise ProviderError("Réponse inattendue du suivi de génération vidéo.") from e
+
+        state = str(job.get("status") or "").lower()
+        if state in ("succeeded", "success", "completed", "done"):
+            result_url = job.get("result_url") or f"{base}/v1/jobs/{job_id}/result"
+            dl = await client.get(result_url, headers=auth, timeout=300)
+            if dl.status_code != 200:
+                raise _failure(dl, "de vidéos")
+            return _video_bytes(dl)
+        if state in ("failed", "error", "canceled", "cancelled"):
+            reason = job.get("error") or job.get("message") or "raison inconnue"
+            raise ProviderError(f"La génération de vidéo a échoué : {reason}")
+
+        await asyncio.sleep(poll_seconds)
+        waited += poll_seconds
+
+    raise ProviderError("La génération de vidéo a expiré (délai maximum dépassé).")
+
+
+async def _video_pollinations(prompt: str, key: str, model: str, timeout_seconds: int) -> tuple[bytes, str]:
+    """Pollinations : tâche asynchrone (202 → /v1/jobs), avec repli synchrone si besoin."""
+    url = f"{settings.pollinations_api_base.rstrip('/')}/video/{quote(prompt, safe='')}"
+    params = {"model": model} if model else {}
+    auth = {"Authorization": f"Bearer {key}"}
+
+    async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+        try:
+            r = await client.get(url, params=params, headers={**auth, "Prefer": "respond-async"})
+        except httpx.HTTPError as e:
+            raise ProviderError(f"Impossible de joindre le fournisseur de vidéos : {e}") from e
+
+        if r.status_code == 202:
+            return await _wait_video_job(client, r, auth, url, params, timeout_seconds)
+        if r.status_code == 200:
+            return _video_bytes(r)
+
+        # 401 (clé refusée) et 402 (quota atteint) sont définitifs : inutile de réessayer.
+        if r.status_code not in (401, 402):
+            try:
+                r = await client.get(url, params=params, headers=auth)
+            except httpx.HTTPError as e:
+                raise ProviderError(f"Impossible de joindre le fournisseur de vidéos : {e}") from e
+            if r.status_code == 200:
+                return _video_bytes(r)
+
+        raise _failure(r, "de vidéos")
 
 
 async def generate_video(prompt: str, poll_seconds: int = 8, timeout_seconds: int = 900) -> tuple[bytes, str]:

@@ -12,7 +12,7 @@
 |---|---|
 | 💬 Chat IA | Conversations en français, historique illimité, conversations multiples |
 | 🎨 Images IA | Génération d'images via l'API Images OpenAI (gpt-image-1 / dall-e-3) |
-| 🎬 Vidéos IA | Génération de vidéos via Replicate (minimax/video-01, …) |
+| 🎬 Vidéos IA | Génération de vidéos réelles (Pollinations `veo-3.1-fast`, `seedance`, `wan`… ou Replicate) — clé requise, tâche asynchrone suivie en arrière-plan |
 | 💻 Code IA | Code propre et commenté avec explications, tous langages |
 | 💰 Crédits | 3 crédits / demande, +200 crédits/heure automatiques, remboursement en cas d'échec |
 | 🖼️ Galerie | Galerie personnelle des images et vidéos générées |
